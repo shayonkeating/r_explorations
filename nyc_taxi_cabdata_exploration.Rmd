@@ -1,0 +1,91 @@
+# investigation into taxi cab data in nyc
+
+```{r}
+# import reqs 
+library(ggplot2)
+library(dplyr)
+# set working directory for project (this will be blank when entered, please load own data)
+```
+
+```{r setup}
+# this will need to be set locally hence it'll be empty when submitted
+knitr::opts_knit$set(root.dir = "/data")
+```
+
+```{r}
+# Question 02
+# load the taxi trip records from the set directory
+tripdata_df <- read.csv("2020_Green_Taxi_Trip_Data.csv")
+dim(tripdata_df)
+summary(tripdata_df)
+glimpse(tripdata_df)
+# Rows: 398,644
+# Columns: 20
+```
+```{r}
+# Question 03
+# data seems pretty consistent and only encompasses for the month of February from 2020, few places with empty data slots but for the most part everything seems filled. Dates start from 2/1 and go to 2/29 as their final start time. which means it was a leap year as well. some bleed into the next month with their end times
+# ehail_fee seems to be totally missing and no data exists within that column, could be excluded from analysis since that appears to be a totally empty column with no data available
+# toll amount for practically the entire column of tolls is 0 except for a few places, interesting since these cabs mainly serve the boroughs
+# the majority of the passenger count seems to be around 1 which means that it is a very rare occurence for more than 1 person to use the cab at a
+```
+
+```{r}
+# Question 04
+# histogram showing trip distance
+ggplot(tripdata_df, aes(x = trip_distance)) +
+  geom_histogram(fill = "grey", color = "black") +
+  scale_x_log10() +
+  theme_minimal() +
+  labs(title = "Histogram of Trip Distance",
+       x = "Trip Distance",
+       y = "Count (log scale)")
+
+# data is not necessarily skewed to one side or the other, it appears to be of a normal distribution with an average amount of distance covered that is represented by the middle of the plot. People seem to use taxis for a certain distances and some outliers for short trips and very long trips do exist in this dataset.
+```
+```{r}
+# Question 05
+# calc mean and std dev for each one
+mean_tip_amount <- mean(tripdata_df$tip_amount, na.rm = TRUE)
+sd_tip_amount <- sd(tripdata_df$tip_amount, na.rm = TRUE)
+
+mean_trip_distance <- mean(tripdata_df$trip_distance, na.rm = TRUE)
+sd_trip_distance <- sd(tripdata_df$trip_distance, na.rm = TRUE)
+
+# identify outliers
+outliers_tip_amount <- tripdata_df$tip_amount[abs(tripdata_df$tip_amount - mean_tip_amount) > 3 * sd_tip_amount]
+outliers_trip_distance <- tripdata_df$trip_distance[abs(tripdata_df$trip_distance - mean_trip_distance) > 3 * sd_trip_distance]
+head(outliers_tip_amount)
+head(outliers_trip_distance)
+# remove outliers from tip_amount
+cleaned_tripdata_df <- tripdata_df[!(tripdata_df$tip_amount %in% outliers_tip_amount), ]
+
+# a lot of outliers were detected for the tip amount, mainly all of them being values that are above 7 dollars if not more, seems that people do not tip that much usually hence the data is more skewed to the lower end
+# not that many outliers exist for trip distance, the main ones are very high values which shows that the majority of people seem to travel a shorter distance with taxis and do not travel very far
+```
+
+```{r}
+# Question 06
+filtered_omit_data <- na.omit(cleaned_tripdata_df[c("trip_distance", "payment_type")])
+
+# Create separate histograms for each payment type
+ggplot(filtered_omit_data, aes(x = trip_distance)) +
+  geom_histogram(fill = "blue", color = "black") +
+  facet_wrap(~ payment_type, scales = "free_x") +
+  scale_x_log10() +
+  theme_minimal() +
+  labs(title = "Histograms of Trip Distance by Payment Type",
+       x = "Trip Distance",
+       y = "Frequency")
+```
+```{r}
+# Question 07
+# You can determine two different techniques for handling missing data. You can impute the data by using the mean, median, mode, etc (whatever makes most sense according to the dataset). You can also impute teh data by using linear regression or other regression formulas to determine the missing data. This allows you to substitute the missing values. This method also maintains the quality of the data the best.
+
+# The other method you can use is to simply delete the data that is missing, you can omit the missing data points or delete columns that have missing data. This can lead to significant data loss and can impact the quality of the data.
+
+# for this data, especially because of how big the data set is and its normal distribution (this has not been tested but it does look normal from appearence) I would omit the na values from this dataset since it still retains its normal distribution look. You can still draw conclusions from the data and losing some data is not the worst in the case of this dataset where the majority of the data is still in tack.
+
+# example for filtering the na values from the trip distance and payment type dataset used earlier because it was tossing an error
+filtered_omit_data <- na.omit(cleaned_tripdata_df[c("trip_distance", "payment_type")])
+```
