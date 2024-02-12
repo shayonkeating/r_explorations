@@ -1,0 +1,131 @@
+---
+title: "Assignment 05"
+author: "shayon keating"
+---
+
+```{r}
+# import reqs 
+#install.packages("RCurl")
+#install.packages("XML")
+#install.packages("dplyr")
+#install.packages("stringr")
+#install.packages("tidyr")
+#install.packages("ggplot2")
+library(stringr)
+library(RCurl)
+library(XML)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r}
+# Question 01
+# Load the XML file
+url <- "https://www.senate.gov/general/contact_information/senators_cfm.xml"
+script <- getURL(url, .opts = list(ssl.verifypeer = FALSE)) 
+doc <- xmlParse(script) 
+data <- xmlToDataFrame(nodes = getNodeSet(doc, "//member"))
+dim(data)
+head(data)
+```
+
+```{r}
+# Question 02
+senators <- data %>%
+  mutate(
+    first_name = str_extract(first_name, "^[^\\s.]+"), # Extracts only the first part before a space or period
+    last_name = str_replace(last_name, ",?\\s*(Jr\\.?|Sr\\.?|III|IV)$", ""), # Extracts the last name excludes anything else
+    party = str_extract(member_full, "(?<=\\()D|R|I") # Extracts the party
+  ) %>%
+  mutate(party = str_remove(party, "\\($")) %>% # Removes the "(" from the party
+  select(first_name, last_name, party) # Selects only desired columns
+
+# Print the new dataframe
+head(senators,10)
+```
+
+```{r}
+# Question 03
+senatorsByState <- function(stateAbbreviation) {
+  senators_in_state <- data %>%
+    filter(state == stateAbbreviation) %>%
+    mutate(party = case_when(
+      party == "D" ~ "Democratic Party", # Set the descriptions for parties
+      party == "R" ~ "Republican Party",
+      party == "I" ~ "Independent",
+      TRUE ~ party
+    )) %>%
+    mutate(full_details = paste(first_name, last_name, ",", party)) %>%
+    summarise(senators_details = paste(full_details, collapse = " and ")) %>%
+    pull(senators_details)
+
+  # Display message
+  if (length(senators_in_state) > 0) {
+    message(sprintf("The senators for %s are: %s",stateAbbreviation,senators_in_state))
+  } else {
+    message(sprintf("No senators found for %s",stateAbbreviation))
+  }
+}
+
+# Example
+senatorsByState("MA")
+```
+
+```{r}
+# Question 04
+# Load directory
+# Setting the working directory for knitr (if using an R Markdown document)
+knitr::opts_knit$set(root.dir = "")
+setwd("")
+
+# Reading the CSV files
+country_name <- read.csv("Country_Meta-Data.csv")
+indicator_data <- read.csv("Ratio Of Female To Male Youth Unemployment Rate.csv", quote = "'") # Ensure the file name is correct
+
+# Cleaning the country_name first
+# Some anamolies still exist that dont seem to affect anything (ie FCS for fragile countries but it is distinct hence a non issue)
+country_name_cleaned <- country_name %>%
+  select(CountryCode = `Country.Code`, CountryName = TableName) %>%
+  distinct()
+
+indicator_data_long <- indicator_data %>%
+  mutate(across(starts_with("X"), as.numeric)) %>%
+  # Use pivot_longer to gather year columns
+  pivot_longer(
+    cols = starts_with("X"), 
+    names_to = "year",
+    values_to = "value"
+  ) %>%
+  mutate(year = as.integer(str_remove(year, "^X"))) %>%
+  # Select and rename columns
+  select(country_code = `Country.Code`, year, value)
+```
+
+```{r}
+# Question 05
+# Filter for the selected countries and the last 20 years
+filtered_data <- indicator_data_long %>%
+  filter(
+    country_code %in% c("AFG", "IRN", "CAN", "SGP", "JPN") &
+    year >= (max(year) - 20)
+  )
+
+continent_assignment <- data.frame(
+  country_code = c("AFG", "IRN", "CAN", "SGP", "JPN"),
+  continent = c("Middle East", "Middle East", "North America", "Asia", "Asia")
+)
+
+filtered_data <- filtered_data %>%
+  left_join(continent_assignment, by = "country_code")
+
+# Create the line chart
+ggplot(filtered_data, aes(x = year, y = value, color = country_code, group = country_code)) +
+  geom_line() + 
+  theme_minimal() + 
+  labs(x = "Year", y = "Value", title = "Indicator Data Over the Last 20 Years") +
+  facet_wrap(~continent, scales = "free_y") + 
+  theme(legend.position = "bottom") 
+
+#In both the asian countires and middle eastern countries the values are very high which show a high ratio of male to female youth unemployment, since the ratio is high that means higher males unemployed. Hence more men are working vs women. The graph has significantly dropped in the last 20 years in the middle east as well in Asia but it was not well maintained, potentially some event happened in 2015 to make it drop that low. In North America the ratio is signficantly lower than both of these regions with a signficant drop in 2008 showing the global recession crisis. But overall it has stayed relatively stable meaning that the ratio of men to women unemployment is lower, hence men and women are more equally valued in the workforce than asia and middle east.
+```
