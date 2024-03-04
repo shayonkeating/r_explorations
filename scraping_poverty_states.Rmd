@@ -1,0 +1,205 @@
+---
+title: "scraping_poverty_states"
+author: "shayon keating"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+# import reqs 
+#install.packages("RCurl")
+#install.packages("XML")
+#install.packages("scrapeR") # scrapeR is depreciated
+#install.packages("rvest")
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("tidyr")
+```
+
+```{r}
+# Question 1 import the table from the wiki link
+library(XML)
+library(rvest)
+library(dplyr)
+
+url <- "https://en.m.wikipedia.org/wiki/List_of_sovereign_states_by_percentage_of_population_living_in_poverty"
+page <- read_html(url)
+tables <- html_table(page) # pass to a table
+data <- tables[[1]] # get the desired table
+data <- data %>%
+  mutate(across(c(`$2.15`, `$3.65`, `$6.85`), ~na_if(., "N/A")))
+desired_table <- data %>%
+  mutate(across(c(`$2.15`, `$3.65`, `$6.85`), ~ as.numeric(sub("%", "", .))))
+print(desired_table) # print ze boy
+```
+
+```{r}
+# Question 2 create a scatterplot visualizing the relationship between the 2.15 day and gini coefficient 
+# value of 0 shows perfect equality
+# value of 1 shows perfect inequality
+library(ggplot2)
+library(dplyr)
+
+# Get the gini data by importing data
+gini <- read.csv('gini_coeff.csv', header = TRUE, sep = ",", stringsAsFactors = FALSE)
+
+# Merge the two data sets 
+merged_povdata <- merge(desired_table, gini, by.x = c("Country", "Year"), by.y = c("Entity", "Year"))
+print(merged_povdata)
+# Create the scatterplot with a trend line
+ggplot(merged_povdata, aes(x = `$2.15`, y = `Gini.coefficient`)) +
+  geom_point() +  # Add points to plot
+  geom_smooth(method = "lm", color = "red") +  # Add a linear model trend line
+  labs(
+    title = "Relationship between $2.15/day Poverty Rate and Gini Coefficient",
+    x = "$2.15/day Poverty Rate (%)",
+    y = "Gini Coefficient"
+  ) +
+  theme_minimal() 
+
+# observing that there is a positive relationship between the 2.15/day poverty rate and the gini coefficient
+# hence countries with higher poverty rates tend to have higher levels of income inequality
+# HENCE the billionaries and the millionaires need to pay their taxes (bernie where u at)
+```
+```{r}
+# Question 3 subset and look only at euro countires
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# make a list of Euro countries (this is copy and pasted)
+european_countries <- c("Albania", "Andorra", "Austria", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg", "Malta", "Moldova", "Monaco", "Montenegro", "Netherlands", "North Macedonia", "Norway", "Poland", "Portugal", "Romania", "Russia", "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland", "Ukraine", "United Kingdom", "Vatican City")
+
+# make the data_europe subset
+data_europe <- merged_povdata[merged_povdata$Country %in% european_countries, ]
+
+average_poverty_rates <- data_europe %>%
+  summarise(
+    Average_215 = mean(`$2.15`, na.rm = TRUE),
+    Average_365 = mean(`$3.65`, na.rm = TRUE),
+    Average_685 = mean(`$6.85`, na.rm = TRUE)
+  )
+
+# convert from wide to long format
+average_poverty_rates_long <- pivot_longer(average_poverty_rates, cols = starts_with("Average"),
+                                           names_to = "Poverty_Line", values_to = "Average_Rate")
+
+# adjust the names for plotting
+average_poverty_rates_long$Poverty_Line <- factor(average_poverty_rates_long$Poverty_Line, 
+                                                   levels = c("Average_215", "Average_365", "Average_685"),
+                                                   labels = c("$2.15/day", "$3.65/day", "$6.85/day"))
+
+# plot the graph
+ggplot(average_poverty_rates_long, aes(x = Poverty_Line, y = Average_Rate, fill = Poverty_Line)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  labs(title = "Average Poverty Rates Across European Countries",
+       x = "Poverty Line", 
+       y = "Average Poverty Rate (%)") +
+  theme_minimal()
+
+# data shows there are very few countries in europe that are at 2.15 a day and more countries that are at 6.85 poverty level
+# hence the poverty rate (severe poverty) is lower overall
+```
+```{r}
+# Question 4 use the second table on the wiki page
+library(rvest)
+library(dplyr)
+
+url <- "https://en.m.wikipedia.org/wiki/List_of_sovereign_states_by_percentage_of_population_living_in_poverty"
+page <- read_html(url)
+tables <- html_table(page) # pass to a table
+data_2 <- tables[[2]] # get the desired table
+names(data_2)[1:5] <- c("Country", "World.Bank", "Year1", "Our.Worldin.Data", "Year2")
+data_2_clean <- data_2 %>%
+  mutate(across(c(World.Bank, `Our.Worldin.Data`), ~as.numeric(gsub("%", "", .))))
+
+# merge with the previous dataset with a merge
+merged_data_total <- merge(data_2_clean, merged_povdata, by = "Country")
+#print(merged_data_total)
+
+# select the countries
+selected_countries <- c("Angola", "Chile", "Nepal", "United Kingdom", "Vietnam")
+
+# Assuming 'data' is your dataframe
+data_selected <- merged_data_total[merged_data_total$Country %in% selected_countries, ]
+comparison <- data_selected %>%
+  select(Country, Year, World.Bank, Our.Worldin.Data, Year2, Year, `$2.15`, `$3.65`, `$6.85`, Gini.coefficient) %>%
+  arrange(Country, Year)
+
+print(comparison)
+
+# based on this data Angola seems to be relatively accurate, Chile seems to be accurate with a poverty rate of around 10, Nepal shows a poverty rate of 25. but 80.4 shows wide spread poverty. UK shows the same but the other data indicates a very low poverty rate, vietnam has a discrepancy between the two rates and the other nunmbers suggest a moderate poverty rate
+``` 
+```{r}
+# Question 5 vis 1
+library(ggplot2)
+library(dplyr)
+
+comparison2 <- comparison %>%
+  select(Country, World.Bank, Our.Worldin.Data)
+
+# comparing the poverty rates reported by the world bank and our world in data, seeing if a discrepancy exists
+data_to_plot <- data.frame(
+  Country = rep(comparison2$Country, each = 2),
+  Source = rep(c("World Bank", "Our World in Data"), times = 5),
+  PovertyRate = c(comparison2$World.Bank, comparison2$Our.Worldin.Data)
+)
+
+ggplot(data_to_plot, aes(x = Country, y = PovertyRate, fill = Source)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = c("World Bank" = "steelblue", "Our World in Data" = "seagreen3")) +
+  labs(title = "Poverty Rate Comparison by Source",
+       x = "Country",
+       y = "Poverty Rate",
+       fill = "Data Source") +
+  theme_minimal()
+
+print(comparison2)
+``` 
+
+```{r}
+# Question 5 vis 2
+library(ggplot2)
+library(dplyr)
+
+# exploring the poverty depth of these countries with the other data, illustrates the severity of the poverty in the country
+data_to_plot_2 <- data.frame(
+  Country = rep(comparison$Country, times = 3),
+  Threshold = rep(c("$2.15", "$3.65", "$6.85"), each = 5),
+  Poverty_Rate = c(comparison$`$2.15`, comparison$`$3.65`, comparison$`$6.85`) # Sample data
+)
+
+ggplot(data_to_plot_2, aes(x = Country, y = Poverty_Rate, fill = Threshold)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = c("$2.15" = "maroon", "$3.65" = "darkblue", "$6.85" = "darkgreen")) +
+  labs(title = "Poverty Depth Across Selected Countries",
+       x = "Country",
+       y = "Percentage under Poverty Threshold",
+       fill = "Poverty Line") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+``` 
+
+```{r}
+# Question 5 vis 1
+library(ggplot2)
+library(dplyr)
+
+# visualize the difference between the gini coeffieicnt and the world bank poverty level
+
+# modify the gini coeffcient so its out of 100
+comparison3 <- comparison %>%
+  select(Country, World.Bank, Gini.coefficient) %>%
+  mutate(Gini.coefficient = Gini.coefficient * 100)
+
+ggplot(comparison3, aes(x = Country)) +
+  geom_bar(aes(y = World.Bank), stat = "identity", fill = "steelblue") +
+  geom_point(aes(y = Gini.coefficient), color = "red", size = 3) +
+  scale_y_continuous(
+    name = "World Bank Poverty Rate (%)",
+    sec.axis = sec_axis(~ . / 100, name = "Gini Coefficient")
+  ) +
+  labs(title = "World Bank Poverty Rates and Gini Coefficients by Country") +
+  theme_minimal()
+```
