@@ -1,0 +1,413 @@
+
+## Problem 1: Identifying Dimensions From Each Dimension Table
+
+```{r}
+# Load required libraries
+#install.packages("RSQLite")
+#install.packages("sqldf")
+#install.packages("ggplot2")
+#install.packages("stringr")
+library(RSQLite)
+
+# Read files
+bed_type_data <- read.csv("bed_type.csv")
+business_data <- read.csv("business.csv")
+bed_fact_data <- read.csv("bed_fact.csv")
+
+# Connect to SQLite database
+connection <- dbConnect(RSQLite::SQLite(), "imdb.db")
+
+# Write data to the database; business
+dbWriteTable(connection, "business", business_data, overwrite = TRUE)
+# Write data to the database; bed_type
+dbWriteTable(connection, "bed_type", bed_type_data, overwrite = TRUE)
+# Write data to the database; bed_fact
+dbWriteTable(connection, "bed_fact", bed_fact_data, overwrite = TRUE)
+```
+
+```{r}
+# Explore bed_type data
+head(bed_type_data)
+str(bed_type_data)
+dim(bed_type_data)
+
+# Explore business data
+head(business_data)
+str(business_data)
+dim(business_data)
+
+# Explore bed_fact data
+head(bed_fact_data)
+str(bed_fact_data)
+dim(bed_fact_data)
+```
+In the bed_type.csv, the **bed_id** variable is the primary key and serves as a dimension along with the variable **bed_desc** because it provides specific information pertaining to each bed type. The final variable within this csv file **bed_code** is a fact due to being an identifiable character that can be utilized for quantitative analysis and identification.
+
+**Dimension**
+
+- bed_id (PK)
+- bed_desc
+
+**Fact**
+
+- bed_code
+
+In the business.csv file, the **ims_org_id** variable is the primary key and serves as a dimension along with variables **business_name** and **bed_cluster_id** that also provide descriptive information about each business. The **ttl_license_beds** variable is a fact because its a quantitative measure of how many licensed beds are within the businesses. The **ttl_census_beds** variable is a fact because its also a quantitative measure of how many census beds are within the businesses. The same goes for the variable **ttl_staffed_beds** that reflects the total number of staffed beds within the businesses.
+
+**Dimension**
+
+- ims_org_id (PK)
+- business_name
+- bed_cluster_id
+
+**Fact**
+
+- ttl_license_beds
+- ttl_census_beds
+- ttl_staffed_beds
+
+## Problem 2: Identifying The Facts Variables From The Single Fact Table
+
+```{r}
+dimension_01 <- head(bed_fact_data$ims_org_id) 
+fact_01 <- head(bed_fact_data$census_beds) 
+fact_02 <- head(bed_fact_data$census_beds) 
+```
+- Fact tables usually contain quantitative metrics that business will analyze and also includes foreign keys that reference dimension tables. Foreign Keys serve as dimensions within the fact table and provides context for the facts. 
+
+**ims_org_id** is a foreign key that references an organization entity, makes this a dimensional attribute. It provides context by identifying what organization the record pertains to.
+
+**census_beds** is a quantifiable measure and represents how many beds are occupied by patients, this makes this variable a fact since you can quantify it and analyze it
+
+**staffed_beds** is another quantifiable measure of the actual bed occupancy show how many beds are staffed, this makes this variable a fact as well since you can quantify it and analyze it.
+
+
+## Problem 3a: Analysis for Leadership
+```{r}
+# Load required libraries
+library(sqldf) # execute sql queries
+library(ggplot2)
+library(stringr)
+
+# join bed_type_data & business_data by bed_id & bed_cluster_id
+# Top 10 hospitals in desc order by total ICU or SICU licence beds
+top_10_lb <- "
+    SELECT bdata.business_name, bdata.ttl_license_beds 
+    FROM business_data bdata
+    JOIN bed_type_data bedtd ON bdata.bed_cluster_id = bedtd.bed_id
+    WHERE bedtd.bed_id IN (4, 15)
+    GROUP BY bdata.business_name
+    ORDER BY ttl_license_beds DESC
+    LIMIT 10;
+"
+
+# Top 10 hospitals in desc order by total ICU or SICU census beds
+top_10_cb <- "
+    SELECT bdata.business_name, bdata.ttl_census_beds
+    FROM business_data bdata
+    JOIN bed_type_data bedtd ON bdata.bed_cluster_id = bedtd.bed_id
+    WHERE bedtd.bed_id IN (4, 15)
+    GROUP BY bdata.business_name
+    ORDER BY ttl_census_beds DESC
+    LIMIT 10;
+"
+
+# Top 10 hospitals in desc order by total ICU or SICU staffed beds
+top_10_sb <- "
+    SELECT bdata.business_name, bdata.ttl_staffed_beds
+    FROM business_data bdata
+    JOIN bed_type_data bedtd ON bdata.bed_cluster_id = bedtd.bed_id
+    WHERE bedtd.bed_id IN (4, 15)
+    GROUP BY bdata.business_name
+    ORDER BY ttl_staffed_beds DESC
+    LIMIT 10;
+"
+```
+
+
+```{r} 
+# Execute SQL query (license beds) - summary report 
+top_10_lb <- sqldf(top_10_lb)
+# return results
+print(top_10_lb)
+summary(top_10_lb)
+
+# bar plot 
+ggplot(top_10_lb, aes(x = business_name, y = ttl_license_beds)) + 
+  geom_col(stat = "identity", fill = "dark blue") + 
+  # labels
+  labs(x = "Hospital", y = "Total License Beds", title = "Top 10 Hospitals by Total ICU or SICU License Beds") + 
+  # alter hospital names due to length
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
+
+
+
+avg_lb <- mean(top_10_lb$ttl_license_beds)
+```
+The top 10 hospitals by the total ICU or SICU license beds are:
+
+- Central Texas Veterans Health Care System Waco VA Medical Center
+- Lanterman Developmental Center
+- James J Peters Veterans Affair Medical Center
+- Via Christi Health
+- Texas Health Presbyterian Hospital Dallas
+- VA North Texas Health Care System
+- Hennepin Health Care System, Inc
+- Saint Anthonys Medical Center
+- Wesley Medical Center, LLC
+- East Central Regional Hospital at Gracewood
+
+The average number of license beds available across all hospitals is `r paste(avg_lb)` making the top 3 hospitals higher than the average. A large amount of license beds can be a varying factor in determining if one of these hospitals would be a good fit for the intervention pilot program.
+
+```{r} 
+# Execute SQL query (census beds) - summary report 
+top_10_cb <- sqldf(top_10_cb)
+# return results
+print(top_10_cb)
+summary(top_10_cb)
+
+# bar plot 
+ggplot(top_10_cb, aes(x = business_name, y = ttl_census_beds)) + 
+  geom_col(stat = "identity", fill = "dark blue") + 
+  # labels
+  labs(x = "Hospital", y = "Total Census Beds", title = "Top 10 Hospitals by Total ICU or SICU Census Beds") + 
+  # alter hospital names due to length
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
+
+avg_cb <- mean(top_10_cb$ttl_license_beds)
+
+```
+The top 10 hospitals by the total ICU or SICU census beds are:
+
+- Via Christi Health            
+- United Hospital           
+- The Valley Hospital           
+- Texas Health Presbyterian Hospital Dallas           
+- Spring Grove Hospital Center             
+- Scott and White Memorial Hospital           
+- Saint Lukes Hospital and Health Network           
+- Saint Francis Hospital and Medical Center           
+- Roosevelt Care Center             
+- Rockland Psychiatric Center
+
+The amount of census beds for the top 10 hospitals are all 400. This indicates that they might have a similar occupancy and patient loads. This can reflect the hospitals need for better resource strategies to optimize patient care. 
+
+
+```{r} 
+# Execute SQL query (staffed beds) - summary report 
+top_10_sb <- sqldf(top_10_sb)
+# return results
+print(top_10_sb)
+summary(top_10_sb)
+
+# bar plot 
+ggplot(top_10_sb, aes(x = business_name, y = ttl_staffed_beds)) + 
+  geom_col(stat = "identity", fill = "dark blue") + 
+  # labels
+  labs(x = "Hospital", y = "Total Staffed Beds", title = "Top 10 Hospitals by Total ICU or SICU Staffed Beds") + 
+  # alter hospital names due to length
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
+
+avg_sb <- mean(top_10_sb$ttl_license_beds)
+
+```
+
+The top 10 hospitals by the total ICU or SICU staffed beds are:
+
+- Lanterman Developmental Center         
+- Texas Health Presbyterian Hospital Dallas           
+- VA North Texas Health Care System           
+- James J Peters Veterans Affair Medical Center           
+- Clear Lake Regional Medical Center, LLC           
+- Medical City Dallas Hospital           
+- Advocate Lutheran General Hospital            
+- University Hospital          
+- Memorial Hermann Southwest Hospital          
+- Memorial Health System 
+
+The average amount of staffed beds across all hospitals is 774.9, making the top 4 hospitals over the average. A high amount of staffed beds reflects a hospitals ability to accommodate patients effectively and positively impacts their quality of care. It's important to consider the importance of patient safety, placement, and care within hospitals with a high volume of patients coming in. 
+
+
+## Problem 3b: Interpretation of Findings
+
+#### Top Hospitals by License Beds
+
+1. `r paste(top_10_lb[1,1])`
+2. `r paste(top_10_lb[2,1])`
+
+With a total of **`r paste(top_10_lb[1,2])`** licensed beds, **`r paste(top_10_lb[1,1])`** leads the way for the highest capacity in terms of licensed beds. This reflects the hospitals ability to accommodate patients, likely playing a large role in providing healthcare for that area. 
+
+Following `r paste(top_10_lb[1,1])` with a total of **`r paste(top_10_lb[2,2])`** licensed beds, **`r paste(top_10_lb[2,1])`** makes their efforts in attending to patient needs. By having the second-highest bed capacity among other hospitals, `r paste(top_10_lb[2,1])` also has a  large impact in providing substantial care for patients in their area.
+
+
+
+#### Top Hospitals by Census Beds
+
+1. `r paste(top_10_cb[1,1])`
+2. `r paste(top_10_cb[2,1])`
+
+Both **`r paste(top_10_cb[1,1])`** and **`r paste(top_10_cb[2,1])`** have **`r paste(top_10_cb[1,2])`** census beds in each hospital. This can suggest that they are operating near their capacity for the amount of census beds available. Both hospital likely have similar patient loads and demand for intensive care services. 
+
+
+
+#### Top Hospitals by Staffed Beds
+
+1. `r paste(top_10_sb[1,1])`
+2. `r paste(top_10_sb[2,1])`
+
+With a total of **`r paste(top_10_sb[1,2])`** staffed beds, **`r paste(top_10_sb[1,1])`** leads the way for the highest capacity in terms of staffed beds. This shows their capability to provide care to a large amount of patients needing intensive care services.
+
+
+Following `r paste(top_10_sb[1,1])` with a total of **`r paste(top_10_sb[2,2])`** staffed beds, **`r paste(top_10_sb[2,1])`**. `r paste(top_10_sb[2,1])` also makes their mark in providing patients with intensive care services and catering to a high flow of incoming patients.
+
+#### Insights
+
+**`r paste(top_10_lb[2,1])`** appears in the top 2 for both license beds (`r paste(top_10_lb[2,2])`) and staffed beds (`r paste(top_10_sb[1,2])`) indicating their capability and dedication to providing intensive care and specialized services to a large amount of patients. It's also crucial to note the importance of including patient safety, workflow, and optimizing the quality of healthcare provided as a priority. 
+
+Given that **`r paste(top_10_lb[1,1])`** has a total of  **`r paste(top_10_lb[1,2])`** license beds, they can also be a candidate to enhance the efficiency of patient care and optimizing the overall approaches in hospital operations and resource utilization. 
+
+
+## Problem 4a: Drill Down Investigation
+```{r} 
+# looking into hospitals that have suffieicnt volume for both ICU and SICU beds
+# 4 and 15 designate ICU and SICU
+top_10_4a_census <- "
+SELECT business_data.business_name, SUM(bed_fact_data.census_beds) AS total_census_beds
+FROM bed_fact_data
+JOIN business_data ON bed_fact_data.ims_org_id = business_data.ims_org_id
+WHERE bed_fact_data.bed_id IN (4, 15)
+GROUP BY business_data.business_name
+HAVING COUNT(DISTINCT bed_fact_data.bed_id) = 2
+ORDER BY total_census_beds DESC
+LIMIT 10;
+"
+
+top_10_4a_license <- "
+SELECT business_data.business_name, SUM(bed_fact_data.license_beds) AS total_license_beds
+FROM bed_fact_data
+JOIN business_data ON bed_fact_data.ims_org_id = business_data.ims_org_id
+WHERE bed_fact_data.bed_id IN (4, 15)
+GROUP BY business_data.business_name
+HAVING COUNT(DISTINCT bed_fact_data.bed_id) = 2
+ORDER BY total_license_beds DESC
+LIMIT 10;
+"
+
+top_10_4a_staffed <- "
+SELECT business_data.business_name, SUM(bed_fact_data.staffed_beds) AS total_staffed_beds
+FROM bed_fact_data
+JOIN business_data ON bed_fact_data.ims_org_id = business_data.ims_org_id
+WHERE bed_fact_data.bed_id IN (4, 15)
+GROUP BY business_data.business_name
+HAVING COUNT(DISTINCT bed_fact_data.bed_id) = 2
+ORDER BY total_staffed_beds DESC
+LIMIT 10;
+"
+```
+
+```{r} 
+#census beds
+top_10_4a_census_sql <- sqldf(top_10_4a_census)
+#licensed beds
+top_10_4a_license_sql <- sqldf(top_10_4a_license)
+#staffed beds
+top_10_4a_staffed_sql <- sqldf(top_10_4a_staffed)
+```
+
+```{r} 
+# top_10_4a_census
+print(top_10_4a_census_sql)
+
+# Generate a bar plot for census beds
+ggplot(top_10_4a_census_sql, aes(x = reorder(business_name, -total_census_beds), y = total_census_beds)) + 
+  geom_col(stat = "identity", fill = "maroon") + 
+  labs(x = "Hospital", y = "Total Census Beds", title = "Top 10 Hospitals by Total ICU or SICU Census Beds") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(name = "Hospital")
+
+
+# Calculate and print average census beds
+avg_cb <- mean(top_10_4a_census_sql$total_census_beds)
+print(paste("Average Census Beds:", avg_cb))
+```
+Top 10 Hospitals Census Beds in desc order:
+- University of Maryland Medical Center
+- UC Health University Hospital
+- Shands Hospital at the University of Florida
+- MCGHealth, Inc
+- Grady Memorial Hospital
+- Jackson Memorial Hospital
+- University of Minnesota Medical Center Fairview
+- University Hospital in Bexar County
+- Carolinas Medical Center
+- Yale New Haven Hospital
+
+
+```{r} 
+# top_10_4a_license
+print(top_10_4a_license_sql)
+
+# Generate a bar plot for license beds
+ggplot(top_10_4a_license_sql, aes(x = reorder(business_name, -total_license_beds), y = total_license_beds)) + 
+  geom_col(stat = "identity", fill = "dark blue") + 
+  labs(x = "Hospital", y = "Total License Beds", title = "Top 10 Hospitals by Total ICU or SICU License Beds") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(name = "Hospital")
+
+
+# Calculate and print average license beds
+avg_lb <- mean(top_10_4a_license_sql$total_license_beds)
+print(paste("Average License Beds:", avg_lb))
+```
+
+Top 10 Hospitals Licensed Beds in desc order: 
+- University of Maryland Medical Center
+- UC Health University Hospital
+- Shands Hospital at the University of Florida
+- MCGHealth, Inc
+- Grady Memorial Hospital
+- Jackson Memorial Hospital
+- University of Minnesota Medical Center Fairview
+- University Hospital in Bexar County
+- Carolinas Medical Center
+- Yale New Haven Hospital
+
+```{r} 
+# top_10_4a_staffed
+print(top_10_4a_staffed_sql)
+
+# Generate a bar plot for staffed beds
+ggplot(top_10_4a_staffed_sql, aes(x = reorder(business_name, -total_staffed_beds), y = total_staffed_beds)) + 
+  geom_col(stat = "identity", fill = "darkgreen") + 
+  labs(x = "Hospital", y = "Total Staffed Beds", title = "Top 10 Hospitals by Total ICU or SICU Staffed Beds") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(name = "Hospital")
+
+# Calculate and print average staffed beds
+avg_sb <- mean(top_10_4a_staffed_sql$total_staffed_beds)
+print(paste("Average Staffed Beds:", avg_sb))
+```
+Top 10 Hospitals for Staffed beds in desc order:
+- University of Maryland Medical Center
+- Shands Hospital at the University of Florida
+- Grady Memorial Hospital
+- UC Health University Hospital
+- University of Minnesota Medical Center Fairview
+- Carolinas Medical Center
+- Saint Josephs Hospital and Medical Center
+- Chattanooga Hamilton County Hospital Authority
+- Jackson Memorial Hospital
+- Sunrise Hospital and Medical Center, LLC
+
+
+## Final Recommendation
+
+For the pilot intervention program two hospitals to be recommended for leadership to decide with the first one being the clear winner:
+
+- **University of Maryland Medical Center**
+
+University of Maryland Medical Center consistently ranks in the top in all three categories of staffed, licensed, and census bed type. Able to handle various levels of care, especially with ICU and SICU patients. It also has high staffed bed count which means its able to provide immediate care when needed which is essential for the pilot program. This hospital has the capacity to accommodate a large number of patients and has the ability to efficiently manage and staff these beds as needed. This shows a strong operational framework and potential. This would be the best candidate for hiring more nurses in ACMEs hospital network since this aligns with leaderships guidelines for having sufficient volume for ICU and SICU beds. University of Maryland Medical Center would be the top choice and **should be picked**.
+
+- **UC Health University Hospital**
+
+Similar to Maryland Medical Center, it ranks high as well and has the capaicy and readiness for both critical care and intensive care by its high number of beds. This could be a valuable second site for the pilot nurse program if the initial test and University of Maryland Medical Center as this center has similar metrics to Univeristy of Maryland Medical Center and would most likely see similar outcomes to it if the program is tested here. 
