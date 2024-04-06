@@ -7,4 +7,5 @@ Diving into different datasets in R to explore methods of analysis
 - senator_and_country_code_exploration.RMD : explores two data sets, one being the senator dataset and tidying the data from an XML file, the other being looking at the youth unemployment ratios between men and women in various countries and then proceeding to draw insights from it.
 - sql_lite_db_with_r_movies.Rmd : explores two data sets, one a csv and the other a db of movie statistics from imdb, the exploration utilizes sqlite within R for wokring with the db.
 - scraping_poverty_states.RMD : explores web scraping in R with data being pulled from wikipedia page involving poverty levels and gini coefficients
+- air_traffic_analysis.RMD : Explores air traffic data and analyzes the trends searching for the best forecasting model to be applied to air traffic forecasting
 
