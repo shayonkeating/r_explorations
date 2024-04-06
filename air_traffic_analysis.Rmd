@@ -1,0 +1,237 @@
+---
+title: "Assignment 09"
+author: "shayon keating"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+
+```{r}
+# import alllllllllllllllllllllllllllllllllll the reqs 
+#install.packages("RCurl")
+#install.packages("XML")
+#install.packages("scrapeR") # scrapeR is depreciated
+#install.packages("rvest")
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#install.packages("stringr")
+#install.packages("httr")
+#install.packages("readr")
+#install.packages("RSocrata")
+#install.packages("lubridate")
+```
+
+```{r}
+# Question 1 import the table from the api endpoint
+library("RSocrata")
+
+# uncomment this if you want to read in the data
+df <- read.socrata(
+  "https://data.sfgov.org/resource/rkru-6vcg.csv",
+  app_token = "4i8lzdDg2QK1jNDG1P8wkgU8V",
+  email     = "skeating99@gmail.com",
+  password  = "hopmy2-Wujcow-raxhyr"
+)
+
+dim(df) # get the dims to verify import
+print(names(df)) #printing col names
+head(df, 10) # inspect first 20 values
+```
+
+```{r}
+# Question 02 filter the dataset to extract all domestic passenger activity that occurred each year, in the month of march. Then calc the total passengers for each period
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# filter the dataset
+domestic_march_activity <- df %>%
+  filter(geo_summary == "Domestic", 
+         month(as.Date(activity_period_start_date)) == 3)
+
+# aggregate passenger counts
+annual_passenger_totals <- domestic_march_activity %>%
+  group_by(activity_period) %>%
+  summarize(total_passengers = sum(passenger_count))
+
+# convert to a string format
+annual_passenger_totals$year <- as.numeric(substring(annual_passenger_totals$activity_period, 1, 4))
+
+# plot the data
+ggplot(annual_passenger_totals, aes(x = year, y = total_passengers)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(min(annual_passenger_totals$year), max(annual_passenger_totals$year), by = 1)) +
+  labs(title = "Total Domestic Passengers in March Each Year",
+       x = "Year",
+       y = "Total Passengers") +
+  theme_minimal()
+```
+As we all know there is a massive drop in 2020 because of a very particular event! Covid happened and air travel significantly dropped off because of it. But this graph shows a steady increase of passengers over the years and seems to be recovering since 2020 where it dropped off like a rock. 
+
+```{r}
+# Question 03 Forecast the passenger activity for March 2019 using a MA for the time periods of 201603, 201703 and 201803.
+# take the average of some number n over some time period 1/n 
+# does not contain trend or cyclical patterns 
+library(dplyr)
+
+# make fxn for simple moving average and filter per activity
+sma_forecast <- df %>%
+  filter(activity_period %in% c(201603, 201703, 201803)) %>%
+  summarise(SMA = mean(passenger_count)) %>%
+  pull(SMA)
+
+# get march 2019 from df
+actual_2019 <- df %>%
+  filter(activity_period == 201903) %>%
+  summarise(actual_count = sum(passenger_count)) %>%
+  pull(actual_count)
+
+# calc forecast error
+forecast_error <- actual_2019 - sma_forecast
+
+# print
+cat("SMA Forecast for March 2019:", sma_forecast, "\n")
+cat("Actual Passenger Count for March 2019:", actual_2019, "\n")
+cat("Forecast Error:", forecast_error, "\n")
+```
+Pretty big discrepancy in these two numbers. A simple moving average did not capture the the actual trend leading up to March 2019. There may have been a rapid increase or trend in the data that the selected periods do not represent, SMA might not capture this. Overall, do not use this as it fails to account for seasonality as well which is known for airline data.
+
+```{r}
+# Question 04 Forecast passenger activity for 2019 using a three year weighted moving average with weights 3,5,7
+
+# extract the data as needed
+passenger_counts <- df %>%
+  filter(activity_period %in% c(201603, 201703, 201803)) %>%
+  summarize(total_passenger_count = sum(passenger_count)) %>%
+  pull(total_passenger_count)
+
+# apply the weights of 3,5,7, respectively
+weights <- c(3, 5, 7)
+weighted_sum <- sum(passenger_counts * weights)
+total_weights <- sum(weights)
+
+# calc moving averages
+wma_forecast <- weighted_sum / total_weights
+
+# get 2019 counts
+actual_2019_total <- df %>%
+  filter(activity_period == 201903) %>%
+  summarize(total_passenger_count = sum(passenger_count)) %>%
+  pull(total_passenger_count)
+
+# fxn to get forecast error
+forecast_error <- actual_2019_total - wma_forecast
+
+# print
+print(wma_forecast)
+print(actual_2019_total)
+print(forecast_error)
+```
+
+A weighted moving average is not a great predictor for the actual count of passengers for flights, pretty far off from the actual count and leaves a large discrepancy. This means that this model is not good and does not take into account other factors that could directly relate into this. Adding this weight still has a large discrepancy and does not capture it, once again fails to take into account seasonality. 
+
+```{r}
+# Question 05
+library(dplyr)
+
+# extract 2008 to 2018
+march_passenger_counts <- df %>%
+  filter(activity_period >= 200803, activity_period < 201803, substr(as.character(activity_period), 5, 6) == "03") %>%
+  arrange(activity_period) %>%
+  pull(passenger_count)
+
+# set the alpha
+alpha <- 0.7
+exp_forecasts <- march_passenger_counts[1] #start count
+
+# exponential smoothing with this sexy ass formula
+for(i in 2:length(march_passenger_counts)) {
+  exp_forecasts <- alpha * march_passenger_counts[i] + (1 - alpha) * exp_forecasts
+}
+
+# get the data for 2019
+actual_2019_count <- df %>%
+  filter(activity_period == 201903) %>%
+  summarize(total_passenger_count = sum(passenger_count)) %>%
+  pull(total_passenger_count)
+
+# calc the forecast error, this is too easy!!!
+forecast_error <- actual_2019_count - exp_forecasts
+
+# print there where i can read them
+cat("Exponential Smoothing Forecast for March 2019:", exp_forecasts, "\n")
+cat("Actual Passenger Count for March 2019:", actual_2019_count, "\n")
+cat("Forecast Error:", forecast_error, "\n")
+```
+The exponential smoothing forecast for March 2019 underestimated the actual passenger activity, as shown with the forecast error presented. It underscores the need of careful model selection, consideration of data characteristics (ie seasonality), and the  need for more sophisticated models (IE ARIMA or SARIMAX modeling). I personally feel that there are a lot fo factors that are being overlooked with this model that are not totally considered. 
+
+```{r}
+# Question 06
+library(dplyr)
+
+# extract the needed data
+data <- df %>%
+  filter(activity_period >= 200803, activity_period <= 201812, substr(as.character(activity_period), 5, 6) == "03") %>%
+  mutate(year = as.numeric(substr(as.character(activity_period), 1, 4))) %>%
+  select(year, passenger_count)
+
+# calc the mean
+mean_x <- mean(data$year)
+mean_y <- mean(data$passenger_count)
+
+# calc the slope
+numerator <- sum((data$year - mean_x) * (data$passenger_count - mean_y))
+denominator <- sum((data$year - mean_x)^2)
+slope <- numerator / denominator
+
+# calc the intercept
+intercept <- mean_y - slope * mean_x
+
+# print
+cat("Slope (b):", slope, "\n")
+cat("Intercept (a):", intercept, "\n")
+
+# apply and forecast for 2019
+forecast_2019 <- slope * 2019 + intercept
+forecast_2020 <- slope * 2020 + intercept
+
+cat("Forecast for 2019:", forecast_2019, "\n")
+cat("Forecast for 2020:", forecast_2020, "\n")
+
+```
+
+This is a way better predictor for trend prediction. This is relatively more accurate, but not in the real world sense since COVID directly affected the outcome and dropped passenger totals like a ROCK. However, this just goes to show that sometimes the best model to use is a simple linear regression model. That can provide the best context. 
+
+
+```{r}
+# Question 07
+# calc the mse
+
+# Filter df for March data from 2008 to 2018
+actual_counts_df <- df %>%
+  mutate(year = year(as.Date(activity_period_start_date)),  # Extract year
+         month = month(as.Date(activity_period_start_date))) %>%  # Extract month
+  filter(month == 3, year >= 2008, year <= 2018) %>%
+  group_by(year) %>%
+  summarize(passenger_count = sum(passenger_count), .groups = 'drop')  # Sum passenger counts for each March
+
+
+# calc the mse
+calculate_mse <- function(actuals, forecasts) {
+  squared_errors <- (actuals - forecasts)^2
+  mean(squared_errors, na.rm = TRUE)
+}
+
+# applying the funtion to the forecastas
+sma_mse <- calculate_mse(actual_counts_df$passenger_count, sma_forecast)
+exp_mse <- calculate_mse(actual_counts_df$passenger_count, exp_forecasts)
+
+cat("Simple moving average:", sma_mse, "\n")
+cat("Exponential:", exp_mse, "\n")
+```
+
+Simple moving average has a smaller MSE when compared to the Exponential. The SMA is overall a better for for the data between 2008 and 2018 albeit it is slighlty smaller. So while the SMA is a slightly better fit, its not the best since the exponential is just a small bit behind it. Outcome of this data and this result is most likely because of the data and the fact that seasonality is not being considered here for these moving averages. Hence a very awkward result with moving averages. 
+
