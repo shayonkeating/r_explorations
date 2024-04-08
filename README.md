@@ -8,4 +8,5 @@ Diving into different datasets in R to explore methods of analysis
 - sql_lite_db_with_r_movies.Rmd : explores two data sets, one a csv and the other a db of movie statistics from imdb, the exploration utilizes sqlite within R for wokring with the db.
 - scraping_poverty_states.RMD : explores web scraping in R with data being pulled from wikipedia page involving poverty levels and gini coefficients
 - air_traffic_analysis.RMD : Explores air traffic data and analyzes the trends searching for the best forecasting model to be applied to air traffic forecasting
+- ncbirths_analysis_model.RMD : Building out a multiple linear regression colinearity model and optimizing params to be able to predict birth rate using the ncbirths dataset.
 
