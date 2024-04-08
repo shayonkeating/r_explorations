@@ -1,0 +1,101 @@
+---
+author: "shayon keating"
+---
+
+# Question 01
+# Confidence interval is the range where a population parameter is expected to fall within a certain range (known as the confidnece), hence we are confident that within this certain range a value will fall (ie 95% confidence interval means that we are 95% confident the true value population parameter lies within this interval). A prediction interval forecasts where future individual observations are likely to fall. This accounts for the estimates uncertaininty and variability. Usually this is wider than the confidnece interval because it has to account for uncertainity in the estimate of the mean and the random variability that exists within the observations themselves. 
+
+Multiple Linear Regression models the relationship between a dependent variable and multiple independent variables. It uses a linear equation to predict out the dependent variable. You can use it to understand the influence of several predictors and also for forecasting trends. 
+```{r}
+#install.packages("openintro")
+#install.packages("corrplot")
+#install.packages("dplyr")
+library(openintro)
+library(corrplot)
+library(dplyr)
+
+# Store ncbirths in environment
+ncbirths <- ncbirths
+head(ncbirths, 10)
+str(ncbirths)
+```
+
+```{r}
+# Question 02 build a correlation matrix
+numeric_vars <- ncbirths %>% select(fage, mage, weeks, visits, gained, weight)  # electing only numeric and integer columns, axing everything else
+cor_matrix <- cor(numeric_vars, use = "complete.obs")
+print(cor_matrix)
+```
+# Question 02
+# There are a few co-linearity items that are present here. 1) mage and fage which shows that as one parents age increases the others age increases. 2) Weeks and weight correlation, longer gestation periods means higher birth weights. There is minimal correlation between parental ages and gestational weeks, as well as prenatal visits and weight gain during pregnancy, these could be removed. This leads to the fact that these pairs of variables have little to no linear relationship. Removing some of these variables or adjusting the variables with low correlation should definitely be considered and/or exploring non-linear transformations. mage could be removed and visit could be removed as well for this model since both those do not correlate at all.
+
+```{r}
+# Question 03
+model <- lm(weight ~ fage + mage + weeks + visits + gained + mature + premie + marital + lowbirthweight + gender + habit + whitemom, data = ncbirths)
+summary(model)
+```
+# Question 03
+# The R^2 value of .6049 shows a good fit and also statistically significant as shown with the F-statistic of 100.4 with a p-value less than 2.2e-16 (meaning statistically compelling information that there is a relationship). Key predictors include gestational weeks, weight gained during pregnancy, not being of low birth weight, the baby's gender as male, maternal smoking habits, and maternal race, each showing statistical significance in influencing birth weight. On the converse, parental ages, prenatal visits, and marital status, among others, showed high p-values, suggesting a lesser or no linear contribution to predicting birth weight. The standard error of .9126 with 787 df shows that it is a generally accurate model for birth weights but also hints at some unexplained variance that could exist. 
+
+```{r}
+# Question 04
+fullModel <- lm(weight ~ fage + mage + weeks + visits + gained + mature + premie + marital + lowbirthweight + gender + habit + whitemom, data = ncbirths)
+summary(fullModel)
+```
+# Variables like mage and mature show very high p values hence lets remove them stepwise to improve the model
+```{r}
+# Question 04 removing mage
+modelStep1 <- update(fullModel, . ~ . - mage)
+summary(modelStep1)
+```
+```{r}
+# Question 04 removing mature
+modelStep2 <- update(modelStep1, . ~ . - mature)
+summary(modelStep2)
+```
+# From this we can see that the model is improving and giving better outcomes with the f-stat and r-squared higher but now visits is also high p-value so lets remove it
+```{r}
+# Question 04 removing visits
+modelStep3 <- update(modelStep2, . ~ . - visits)
+summary(modelStep3)
+```
+# R squared value has increased which shows an improvement as well as the F-stat also increased showing a stronger overall significance of the model, the error also decreased as well. Lets remove premie since that is the highest now and could improve the overall model.
+
+```{r}
+# Question 04 removing premie
+modelStep4 <- update(modelStep3, . ~ . - premie)
+summary(modelStep4)
+```
+# This looks slightly better with a better R squared value and the f-stat has also increased again which shows the models strength. Maritalmarried is the next highest so lets remove that to see how it affects it.
+
+```{r}
+# Question 04 removing marital
+modelStep5 <- update(modelStep4, . ~ . - marital)
+summary(modelStep5)
+```
+# After 5 rounds this model looks great and all variables are significant. The R squared is .6142 which shows a high significance and the F-Stat is 184.3 also showing a high significance. Standard error has gone down which is great for this model as well. This provides insights into factors that contribute to neonatal health. This models statistical robustness also contributes and makes it a reliable tool for predicitng birth weight outcomes,
+
+
+```{r}
+# Question 05
+# create a new df with all the new data entered into it
+new_data <- data.frame(
+  fage = 40,
+  weeks = 42,
+  gained = 22,
+  lowbirthweight = factor("not low", levels = c("low", "not low")),
+  gender = factor("female", levels = c("male", "female")),
+  habit = factor("nonsmoker", levels = c("smoker", "nonsmoker")),
+  whitemom = factor("white", levels = c("not white", "white"))
+)
+
+# predict using the new data
+prediction_confidence <- predict(modelStep5, newdata = new_data, interval = "confidence", level = 0.95)
+prediction_prediction <- predict(modelStep5, newdata = new_data, interval = "prediction", level = 0.95)
+
+# print
+print(prediction_confidence)
+print(prediction_prediction)
+
+```
+# Predicted weight on the birth is around 8.02 pounds. It uses the fathers age, gestation weeks, weight gained during pregnancy, and other factors. The 95% CI has a lower at 7.85 lbs and an upper at 8.18 lbs. This is a measure of precision of the estimate for the mean response. The 95% PI interval has a lower of 6.22 lbs and an upper of 9.81 lbs (lot bigger) showing the uncertainity of the estimnation for the mean but also the natural variability in the birthing amongst all babies. 
