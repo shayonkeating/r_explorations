@@ -1,0 +1,475 @@
+---
+title: "nyc taxi data model building"
+author: "Nicole Rodriguez, Shayon Keating"
+date: "2024-04-08"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    theme: cosmo
+    highlight: monochrome
+    toc: true
+    code_folding: show
+---
+
+## Question 1: CRISP-DM - Data Understanding
+### Load Data
+```{r}
+# Load required libraries
+library(readr)
+library(tidyverse)
+
+########update and add "?$limit=8808000" to url
+
+#  2018 NYC Green Taxi Trip Records data url
+api <- "https://data.cityofnewyork.us/resource/w7fs-fd9i.csv?$limit=100000"
+# Load 
+data <- read_csv(api, show_col_types = FALSE)
+```
+
+### Data Exploration
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+
+# Analyze data 
+head(data)
+glimpse(data)
+summary(data)
+
+# Data distribution visualization with histogram (tip amount)
+hist(data$tip_amount,
+     col = "lightgreen", 
+     main = "Tip Amount Distribution", 
+     xlab = "Tip Amount")
+
+# Select numeric variables in data set
+num_vars <- data %>%
+  select_if(~ is.numeric(.))
+
+# reshape numeric data for visualization
+data_long <- reshape2::melt(data, id.vars = "tip_amount", measure.vars = names(num_vars))
+
+# Tip amount vs numeric variables in scatterplot
+ggplot(data_long, aes_string(x = "value", y = "tip_amount", color = "variable")) +
+  # update point size
+  geom_point(size = 0.8) +  
+  # update labels
+  labs(title = "Numeric Variables vs. Tip Amount", 
+       x = "Numeric Variables", y = "Tip Amount",
+       color = "Numeric Variable")
+```
+
+The following analysis was conducted utilizing the NYC Green Taxi Trip Records for 2018. This data set is composed of 19 columns and 8.81M rows.
+
+The histogram above shows the distribution of the Tip Amount variable. There are higher frequencies associated with a lower tip amount. The scatter plot shows the distribution of data across all variables against the tip amount. 
+
+
+```{r}
+# Tip amount & other feature correlation
+# Execute correlation 
+corr <- cor(data$tip_amount, num_vars)
+# Positive correlations
+pos_corr <- names(corr[,corr > 0])
+# Moderate positive correlations
+mod_pos_corr <- names(corr[,corr > 0.3 & corr < 0.7])
+# Negative correlations
+neg_corr <- names(corr[,corr < 0])
+
+
+# Correlation results
+print(corr)
+cat("The following variables had positive correlations with tip amount:\n", 
+    paste("- ", pos_corr, collapse = "\n"))
+
+cat("The following variables had moderate positve correlations with tip amount:\n", 
+    paste("- ", mod_pos_corr, collapse = "\n"))
+
+cat("The following variables had a negative correlation with tip amount:\n", 
+    paste("- ", neg_corr, collapse = "\n"))
+
+
+# reshape df for visualization
+corr_df <- as.data.frame(corr)  # into data frame 
+corr_df$variable <- rownames(corr_df) # obtain variable names
+corr_df_update <- pivot_longer(corr_df,
+                               cols = -variable,
+                               names_to = "variable_name",
+                               values_to = "correlation")
+
+# Visualize correlations
+ggplot(corr_df_update, aes(x = variable_name, y = correlation)) +
+  # bar plot
+  geom_bar(stat = "identity", fill = "orange") +
+  # update labels
+  labs(title = "Correlation with Tip Amount", x = "Variable", y = "Correlation") +
+  # adjust x axis text
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The correlation between tip amount and all the other numeric variables was calculated. We determined that the variables with a positive correlation was those with a correlation value greater than 0. The variables categorized with a moderate positive correlation to tip amount was those with a correlation value greater than 0.3 but less than 0.7. The variables with a negative correlation were those with a correlation value less than 0 as shown above. The visualization above was created with ggplot2. 
+
+```{r}
+# Missing values
+miss_val <- colSums(is.na(data))
+print(miss_val)
+miss_names <- names(data)[miss_val > 0]
+
+cat("The variables with missing values are:\n", paste("- ", miss_names, collapse = "\n"))
+
+# Visualize missing values
+missing_df <- data.frame(variable = names(miss_val), missing_values = miss_val)
+
+ggplot(missing_df, aes(x = variable, y = missing_values)) +
+  # bar plot
+  geom_col(fill = "red") +
+  # update labels
+  labs(title = "Missing Values", x = "Variable", y = "Count") +
+  # adjust x-axis text
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+In the bar plot above, we can see that missing values were present in the following variables:
+
+`r paste(miss_names)`
+
+To visualize the missing values, the missing values were put into a data frame and the bar plot was created with ggplot2. 
+
+```{r}
+## Outliers
+summary(num_vars)
+
+# visualize with outliers
+data_long <- reshape2::melt(data, id.vars = "tip_amount", measure.vars = names(num_vars))
+ggplot(data_long, aes_string(x = "variable", y = "value")) +
+  # box plot
+  geom_boxplot(fill = "yellow") +
+  # update labels
+  labs(title = "Boxplot of Tip Amount vs Numeric Variables (With Outliers)", 
+       x = "Variable", y = "Value",
+       color = "Variable") +
+  # adjust x-axis text 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+To visualize the outliers present within the data, a box plot was created, listing the variables and associated values. The ggplot2 library was utilized for this visualization. 
+
+### Feature Selection
+The features that had a stronger positive correlation with tip amount could be good indicators for predicting tip amount. 
+
+- trip_distance
+- fare_amount
+- total_amount
+- lpep_pickup_datetime
+- lpep_dropoff_datetime
+
+The variable trip_distance can be a good predictor for tip amount because longer trips can lead to higher tips. 
+
+The variable fare_amount can be a good predictive indicator since the total amount can influence or result in a higher tip since many people base their tips off a percentage of the total cost. 
+
+The variable total_amount just like fare_amount can be correlated to a higher tip amount due to the overall cost of the trip. 
+
+The variables lpep_pickup_datetime and lpep_dropoff_datetime can help determine if the total trip amount is correlated with a high tip amount. 
+
+The following features can be omitted: 
+
+- vendorid & ratecodeid don't seem to have a large impact on the tip amount according to the correlation values. 
+- improvement_surcharge, tolls_amount, mta_tax, and extra are additional charges that are usually included within the total fare amount and won't provide any additional information to predict tip amount. 
+- ehail_fee has a large amount of missing values and doesn't seem to contribute to the prediction of tip_amount due to the correlation values and missing data.
+
+### Feature Engineering
+```{r}
+# Add feature calculating total trip time in minutes, 2hr max for better visualization
+feat_data <- data %>%
+  mutate(trip_time = as.numeric(pmin(difftime(lpep_dropoff_datetime, lpep_pickup_datetime, 
+                                              units = "mins"), 120)))
+
+# correlation between total trip time and tip amount
+time_corr <- cor(feat_data$trip_time, feat_data$tip_amount)
+cat("The correlation between the total trip time in minutes and tip amount is:", time_corr)
+
+
+# Visualize correlation in scatter plot
+ggplot(feat_data, aes(x = trip_time, y = tip_amount)) +
+  # Scatter plot
+  geom_point(color = "orange") +
+  # labels
+  labs(title = "Total Trip Time vs Tip Amount", x = "Total Trip Time (mins)", y = "Tip Amount") 
+```
+
+We created a feature called **trip_time** which obtains the total time of the trip by calculating the difference between the drop off and pick up times (lpep_pickup_datetime & lpep_dropoff_datetime). Since there was a moderate positive correlation with the distance of the trip and the tip amount, we saw the same potential with the duration of the trip. The total correlation value between the total trip time and the tip amount was `r paste(round(time_corr, 4))` which also reflects a moderate positive correlation between the two variables. 
+
+## Question 2: CRISP-DM - Data Preparation 
+
+To prepare the data to enter an effective modeling phase, any potential issues such as missing values and outliers are taken care of at this stage. 
+
+### Preprocess Data
+```{r}
+# Calculate IQR
+q1 <- apply(num_vars, 2, quantile, probs = 0.25, na.rm = TRUE)
+q3 <- apply(num_vars, 2, quantile, probs = 0.75, na.rm = TRUE)
+iqr <- q3 - q1
+
+# Identify outliers
+lwr <- q1 - 1.5 * iqr
+upr <- q3 + 1.5 * iqr
+outliers <- feat_data %>%
+  filter(across(where(is.numeric), ~ . >= lwr & . <= upr))
+
+# Remove outliers
+clean_data <- feat_data %>%
+  anti_join(outliers)
+
+
+# visualize without outliers
+updated_data_long <- reshape2::melt(clean_data, id.vars = "tip_amount", measure.vars = names(num_vars))
+ggplot(updated_data_long, aes_string(x = "variable", y = "value")) +
+  # box plot
+  geom_boxplot(fill = "yellow") +
+  # update labels
+  labs(title = "Boxplot of Tip Amount vs Numeric Variables (Without Outliers)", 
+       x = "Variable", y = "Value",
+       color = "Variable") +
+  # adjust x-axis text 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Compared to the previous boxplot with outliers present, the boxplot without outliers, we can see an increase in value for the **pulocationid** variable. This can help further normalize the data and help with the reliability of the results. 
+
+```{r}
+# Filter data with relevant variables
+cleaned_data <- clean_data %>%
+  # Select insignificant variables
+  select(-ehail_fee, -vendorid, -ratecodeid, -improvement_surcharge,
+         -tolls_amount, -mta_tax, -extra, -store_and_fwd_flag)
+
+# View data statistics
+head(cleaned_data)
+glimpse(cleaned_data)
+summary(cleaned_data)
+```
+
+The following variables were filtered out of the data due to a lack of correlation with the target variable **tip_amount** and the large presence of missing values. This will help normalize the data and properly prepare it for the modeling phase. 
+
+The remaining 11 variables are helpful in predicting the target variable:
+
+- lpep_pickup_datetime
+- lpep_dropoff_datetime
+- trip_distance   
+- pulocationid
+- dolocationid
+- passenger_count    
+- fare_amount
+- tip_amount       
+- total_amount
+- payment_type
+- trip_type
+
+### Normalize Data
+```{r}
+# Continuous variables
+cont_vars <- c("total_amount", "trip_distance", "tip_amount",
+               "fare_amount", "passenger_count", "trip_time")
+cont_data <- cleaned_data[, cont_vars]
+
+# Z-score standardization
+standard_data <- scale(cont_data)
+# Replace with standardized variables
+cleaned_data[, cont_vars] <- standard_data
+
+# View data statistics
+glimpse(cleaned_data)
+head(cleaned_data)
+summary(cleaned_data)
+
+```
+The following continuous variables were standardized with z-score standardization:
+
+- total_amount
+- trip_distance
+- tip_amount
+- fare_amount
+- passenger_count
+- trip_time
+
+The original variables were replaced with the standardized and helps further prepare the model to process this data which will assume normal distribution. 
+
+### Encode Data
+
+```{r}
+# Define categorical variables
+categ_vars <- c("payment_type", "trip_type")
+
+# Encode categorical variables
+encode <- cleaned_data %>%
+  # Group data by categorical variables 
+  group_by(across(all_of(categ_vars))) %>%
+  # Calculate tip_amount mean within all categories
+  summarise(mean_target = mean(.data[["tip_amount"]], na.rm = TRUE)) %>%
+  # Ungroup
+  ungroup()
+
+# Combine encoded variables 
+encoded_data <- cleaned_data %>%
+  # Join cleaned data and encode df 
+  left_join(encode, by = categ_vars) %>%
+  # Remove original categorical variables & select all columns except categorical variables
+  select(-all_of(categ_vars))
+
+# View data statistics
+glimpse(encoded_data)
+head(encoded_data)
+summary(encoded_data)
+```
+
+The categorical variables **payment_type** and **trip_type** were encoded to help the model understand and process the data. The categorical variables were encoded with target encoding because since they only have a limited number of unique categories and the tip amount can vary significantly within each category. Therefore in this case, the category is replaced with the mean of the tip_amount observed within that category. 
+
+- payment_type categories
+  - 1 = Credit Card
+  - 2 = Cash
+  - 3 = No Charge
+  - 4 = Dispute
+  - 5 = Unknown
+  - 6 = Voided Trip
+ 
+- trip_type categories
+  - 1 = Street-hail
+  - 2 = Dispatch
+ 
+
+### Prepare For Modeling
+
+To properly prepare the data for modeling, the data is split into training and test sets.
+
+```{r}
+# Load required libraries
+library(caret)
+
+# Set seed
+set.seed(123)
+
+# Index to split data
+index <- createDataPartition(encoded_data$tip_amount, p = 0.7, list = FALSE)
+
+# Split into training & test sets
+training_data <- encoded_data[index, ]
+testing_data <- encoded_data[-index, ]
+
+dim_train <- dim(training_data[1])
+dim_test <- dim(testing_data[1])
+
+# Dimensions of data and training/test sets
+cat("Dimensions of encoded data:", dim(encoded_data), "\n")
+cat("Dimensions of training set (70%):", dim(training_data), "\n")
+cat("Dimensions of testing set (30%):", dim(testing_data), "\n")
+
+head(training_data)
+```
+The data was split 70% into the training set and 30% into the testing set. This is a standard split and is helpful when working with very large data sets. Its essential to have enough data to train the model properly and a good amount to test the model. After splitting it with the caret library, the training set had `r paste(dim_train)` rows and the testing set had `r paste(dim_test)` rows. 
+
+## Question 3: CRISP-DM - Modeling
+```{r}
+# install.packages("kknn")
+library(kknn)
+
+# knn function
+knn.predict <- function(data_train, data_test, k) { # train data and test data, then set what k value you want
+  # error handling so it doesnt run through everything if df is not a df
+  if (!is.data.frame(data_train) || !is.data.frame(data_test)) {
+    stop("data_train and data_test must be data frames")
+  }
+  
+  train_features <- data_train[, -ncol(data_train), drop = FALSE]
+  train_target <- data_train[[ncol(data_train)]] # ensure vector
+  
+  test_features <- data_test[, -ncol(data_test), drop = FALSE]
+  test_target <- data_test[[ncol(data_test)]] # ensure vector
+  
+  fit <- kknn(train_target ~ ., train = train_features, test = test_features, k = k, distance = 2, scale = TRUE)
+
+  predictions <- fit$fitted.values
+  
+  # calc the mse
+  mse <- mean((predictions - test_target)^2)
+  
+  return(mse)
+}
+
+# using k of 10 as an exmaple
+mse_result <- knn.predict(training_data, testing_data, k = 10) # set k to 10 for example
+print(mse_result)
+```
+
+## Question 4: CRISP-DM - Evaluation
+```{r}
+library(kknn)
+library(ggplot2)
+
+# Set seed
+set.seed(123)
+
+k_values <- seq(1, 40, 2)  # using 20 different values with a step of 2 between values
+mse_values <- numeric(length(k_values))
+
+# Loop for MSE for each k
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  mse_values[i] <- knn.predict(training_data, testing_data, k)
+}
+
+# create a df for plotting
+results_df <- data.frame(k = k_values, MSE = mse_values)
+
+# plot the MSE to see distribution
+mse_plot <- ggplot(results_df, aes(x = k, y = MSE)) +
+  geom_line() +
+  labs(title = "MSE with different k's for KNN",
+       x = "Number of Neighbors k",
+       y = "Mean Squared Error") +
+  theme_minimal()
+
+print(mse_plot)
+```
+# This graph shows the mean square error (MSE) and the number of neighbors (k) to each other. In order to optimize the KNN algo for this dataset, it was ran multiple times to get the lowest mean square error. The lower the mean squared error, the more accurate and predicitive the model is. The lowest point on this graph appears to be around .1 MSE. This value occurs with a k value of greater than 18/19, hence we can assume that given a k value greater than 18/19, the mean square error would be the lowest for this set of data. Since this model has a stable low MSE across various splits of data, it suggests that it has good generalizability and can be reliably accurate for predicitng tip amounts. On the converse, if the model had a MSE of around 0 or close to it, its predictive capabilities would come into question and potentially it could be overfitted.
+
+# I would advocate that because the model has a low MSE of around .1 for k values greater than 18/19, it has reliable predictive capabilities for predicting the tip amount of future trips. This model can reliably predict how much tip will be given with these specific k values. However, other considerations should be considered when developing a model like this such as change in behavior or economic conditions which could infleunce tipping patterns. Incorporating different metrics or running the model as new data becomes available would be best advised to mitigate these changes in behavior. 
+
+## Question 5: Bonus
+```{r}
+# Index to split data
+index_2 <- createDataPartition(encoded_data$tip_amount, p = 0.8, list = FALSE)
+
+# Split into training & test sets
+training_data_2 <- encoded_data[index_2, ]
+testing_data_2 <- encoded_data[-index_2, ]
+
+k_values <- seq(1, 40, 2)  # using 20 different values with a step of 2
+mse_values <- numeric(length(k_values))
+
+# Loop for MSE for each k
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  mse_values[i] <- knn.predict(training_data_2, testing_data_2, k)
+}
+
+# create a df for plotting
+results_df <- data.frame(k = k_values, MSE = mse_values)
+
+# plot the MSE to see distribution
+mse_plot <- ggplot(results_df, aes(x = k, y = MSE)) +
+  geom_line() +
+  labs(title = "MSE with different k's for KNN",
+       x = "Number of Neighbors k",
+       y = "Mean Squared Error") +
+  theme_minimal()
+
+print(mse_plot)
+
+mse_result <- knn.predict(training_data_2, testing_data_2, k = 10)
+print(mse_result)
+```
+# By changing the split of the data to 80% training and 20% testing data the mean square error did not go down and the best k-values did not change. From this we can assume that the models predictive capabilities have stayed the same. However, this is to be taken with a grain of salt because the number of k's has slightly increased. While this is not a bad thing, caution needs to be had here because of running the risk of undefitting the data with smaller k values. The model might adhere too closely to the training data and captures too much noise which can degrade performance on new, unseen data. However, the low mean square error means it is heading in the right direction and a balance can be struck. Overall, the number of k's should be optimized to the MSE for the lowest possible. A difference of split between the data from 70/30 to 80/20 does not seem to be beneficial as it needs more training data to ensure the models accuracy. And the difference between 70/30 and 80/20 is not noticeable at all, hence this seems to be a moot point when determining the models predictive capabilties. 
